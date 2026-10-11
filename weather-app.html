@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather App — Cek Cuaca Kota</title>
+<meta name="description" content="Cek cuaca kota mana pun secara real-time menggunakan OpenWeatherMap API.">
+
+<style>
+  :root{
+    --biru-tua:#2E5C8A;
+    --biru:#4A7FB5;
+    --biru-muda:#8FC1E8;
+    --teks:#1E293B;
+    --teks-lembut:#64748B;
+    --putih:#FFFFFF;
+    --merah-bg:#FDECEC;
+    --merah-teks:#C0392B;
+    --radius:14px;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    font-family:-apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    color:var(--teks);
+    min-height:100vh;
+    /* Gradasi biru langit sebagai latar, sesuai tema cuaca */
+    background:linear-gradient(160deg, var(--biru-tua) 0%, var(--biru) 55%, var(--biru-muda) 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:1.5rem;
+    line-height:1.5;
+  }
+
+  /* ==========================================================
+     KARTU UTAMA APLIKASI
+     ========================================================== */
+  .app-card{
+    background:var(--putih);
+    width:100%;
+    max-width:400px;
+    border-radius:var(--radius);
+    padding:2rem 1.75rem;
+    box-shadow:0 20px 40px -12px rgba(0,0,0,.25);
+  }
+
+  .app-card header{
+    text-align:center;
+    margin-bottom:1.5rem;
+  }
+  .app-card h1{
+    font-size:clamp(1.4rem, 1.2rem + 1vw, 1.75rem);
+    color:var(--biru-tua);
+  }
+  .app-card header p{
+    color:var(--teks-lembut);
+    font-size:.9rem;
+    margin-top:.25rem;
+  }
+
+  /* ---------- Form pencarian ---------- */
+  #searchForm{
+    display:flex;
+    gap:.5rem;
+    margin-bottom:1.25rem;
+  }
+  #cityInput{
+    flex:1;
+    min-width:0; /* supaya input tidak "mendorong" tombol keluar di layar kecil */
+    padding:.7rem .9rem;
+    border:1.5px solid #E2E8F0;
+    border-radius:8px;
+    font-size:1rem;
+    outline:none;
+    transition:border-color .2s ease;
+  }
+  #cityInput:focus{ border-color:var(--biru); }
+
+  #searchForm button{
+    background:var(--biru-tua);
+    color:var(--putih);
+    border:none;
+    border-radius:8px;
+    padding:.7rem 1.1rem;
+    font-size:.95rem;
+    font-weight:600;
+    cursor:pointer;
+    transition:background .2s ease;
+    flex-shrink:0;
+  }
+  #searchForm button:hover{ background:var(--biru); }
+  #searchForm button:disabled{ opacity:.6; cursor:not-allowed; }
+
+  /* ---------- Loading state ---------- */
+  #loading{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:.75rem;
+    padding:1.5rem 0;
+    color:var(--teks-lembut);
+    font-size:.9rem;
+  }
+  .spinner{
+    width:32px;
+    height:32px;
+    border:3px solid #E2E8F0;
+    border-top-color:var(--biru-tua);
+    border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- Error state ---------- */
+  #errorBox{
+    background:var(--merah-bg);
+    color:var(--merah-teks);
+    border:1px solid #F5C6C6;
+    border-radius:8px;
+    padding:.9rem 1rem;
+    font-size:.9rem;
+    text-align:center;
+  }
+
+  /* ---------- Hasil cuaca ---------- */
+  #weatherResult{ text-align:center; }
+
+  #weatherIcon{
+    width:110px;
+    height:110px;
+    display:block;
+    margin:0 auto;
+  }
+
+  #cityName{
+    font-size:1.3rem;
+    font-weight:700;
+    color:var(--teks);
+  }
+
+  #temperature{
+    font-size:clamp(2.5rem, 2rem + 3vw, 3.5rem);
+    font-weight:700;
+    color:var(--biru-tua);
+    line-height:1;
+    margin:.25rem 0;
+  }
+
+  #description{
+    color:var(--teks-lembut);
+    text-transform:capitalize;
+    margin-bottom:1.1rem;
+  }
+
+  .detail-grid{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:.75rem;
+    border-top:1px solid #EEF2F6;
+    padding-top:1rem;
+  }
+  .detail-item{
+    background:#F7FAFD;
+    border-radius:8px;
+    padding:.65rem .5rem;
+  }
+  .detail-item .label{
+    display:block;
+    font-size:.72rem;
+    color:var(--teks-lembut);
+    margin-bottom:.15rem;
+  }
+  .detail-item .value{
+    font-weight:700;
+    font-size:1rem;
+  }
+
+  /* Kelas util untuk sembunyikan elemen (dipakai bergantian oleh JS) */
+  .hidden{ display:none !important; }
+
+  /* ==========================================================
+     RESPONSIVE — mobile-first.
+     Di bawah ini adalah penyesuaian untuk layar yang lebih lebar
+     (tablet/desktop). Tanpa media query ini, tampilan di HP
+     (yang jadi acuan utama) sudah bekerja dengan baik.
+     ========================================================== */
+  @media (min-width:480px){
+    .app-card{ padding:2.5rem; }
+    #weatherIcon{ width:130px; height:130px; }
+  }
+
+  @media (min-width:768px){
+    body{ padding:2rem; }
+    .app-card{ max-width:440px; }
+  }
+</style>
+</head>
+<body>
+
+<main class="app-card">
+  <header>
+    <h1>🌤️ Weather App</h1>
+    <p>Cek cuaca kota mana pun, kapan pun.</p>
+  </header>
+
+  <!-- FORM PENCARIAN -->
+  <form id="searchForm">
+    <input
+      type="text"
+      id="cityInput"
+      placeholder="Contoh: Jakarta, Medan, Surabaya"
+      autocomplete="off"
+      required
+    >
+    <button type="submit" id="searchButton">Cari</button>
+  </form>
+
+  <!-- STATE: LOADING (tampil saat sedang fetch data) -->
+  <div id="loading" class="hidden">
+    <div class="spinner"></div>
+    <p>Memuat data cuaca...</p>
+  </div>
+
+  <!-- STATE: ERROR (tampil kalau kota tidak ditemukan / gagal koneksi) -->
+  <div id="errorBox" class="hidden"></div>
+
+  <!-- STATE: HASIL CUACA -->
+  <div id="weatherResult" class="hidden">
+    <img id="weatherIcon" src="" alt="">
+    <h2 id="cityName"></h2>
+    <p id="temperature"></p>
+    <p id="description"></p>
+
+    <div class="detail-grid">
+      <div class="detail-item">
+        <span class="label">Kelembaban</span>
+        <span class="value" id="humidity"></span>
+      </div>
+      <div class="detail-item">
+        <span class="label">Terasa Seperti</span>
+        <span class="value" id="feelsLike"></span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  /* ============================================================
+     KONFIGURASI API — WAJIB DIISI SEBELUM APLIKASI BISA JALAN!
+     ============================================================
+     1. Buka https://openweathermap.org/ lalu Sign Up (gratis).
+     2. Verifikasi email, lalu buka menu "My API Keys" di akun.
+     3. Salin API key kamu, tempel di bawah ini (ganti tulisan
+        'GANTI_DENGAN_API_KEY_ANDA').
+     4. API key baru butuh waktu ±10 menit s.d. 2 jam untuk aktif,
+        jadi kalau baru daftar dan belum bisa dipakai, itu normal
+        — coba lagi beberapa saat kemudian.
+
+     Catatan: endpoint yang dipakai di bawah ("Current Weather
+     Data" / data/2.5/weather) adalah produk GRATIS dan BUKAN
+     "One Call API" yang sempat ramai dibahas soal deprecation —
+     jadi tidak perlu kartu kredit untuk memakainya.
+  ============================================================ */
+  const API_KEY = '5f52971c320b868acfd610a413364c05';
+  const BASE_URL = 'https://api.openweathermap.org/data/2.5/weather';
+
+  /* ============================================================
+     AMBIL SEMUA ELEMEN HTML YANG DIBUTUHKAN
+     Dikumpulkan di satu tempat supaya mudah dilacak kalau ada
+     yang mau diubah namanya atau ditambah elemen baru.
+  ============================================================ */
+  const searchForm   = document.getElementById('searchForm');
+  const cityInput    = document.getElementById('cityInput');
+  const searchButton = document.getElementById('searchButton');
+
+  const loadingEl  = document.getElementById('loading');
+  const errorBoxEl = document.getElementById('errorBox');
+  const resultEl   = document.getElementById('weatherResult');
+
+  const weatherIconEl   = document.getElementById('weatherIcon');
+  const cityNameEl      = document.getElementById('cityName');
+  const temperatureEl   = document.getElementById('temperature');
+  const descriptionEl   = document.getElementById('description');
+  const humidityEl      = document.getElementById('humidity');
+  const feelsLikeEl     = document.getElementById('feelsLike');
+
+  /* ============================================================
+     EVENT LISTENER — dipicu saat form di-submit
+     (baik lewat klik tombol "Cari" maupun tekan Enter di input)
+  ============================================================ */
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault(); // cegah halaman reload (perilaku default form)
+
+    const city = cityInput.value.trim();
+    if (!city) return; // jangan proses kalau input kosong/hanya spasi
+
+    getWeather(city);
+  });
+
+  /* ============================================================
+     FUNGSI UTAMA: ambil data cuaca dari OpenWeatherMap
+     Pakai async/await + fetch (requirement #1 & #2)
+  ============================================================ */
+  async function getWeather(city) {
+    showLoading();
+
+    try {
+      // Template literal (ES6+) untuk menyusun URL dengan rapi.
+      // encodeURIComponent() supaya nama kota dengan spasi/karakter
+      // khusus tetap aman dikirim lewat URL.
+      const url = `${BASE_URL}?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=id`;
+
+      const response = await fetch(url);
+
+      // PENTING: fetch() TIDAK menganggap status seperti 404/401
+      // sebagai error — dia tetap "berhasil" selama server merespons.
+      // Makanya status HTTP-nya harus dicek manual lewat response.ok.
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Requirement #4 — error handling: kota tidak ditemukan
+          showError(`Kota "${city}" tidak ditemukan. Coba periksa kembali penulisannya.`);
+        } else if (response.status === 401) {
+          showError('API key belum aktif/valid. Cek kembali API key di dalam script.js.');
+        } else {
+          showError('Terjadi masalah saat mengambil data cuaca. Coba lagi beberapa saat.');
+        }
+        return; // hentikan fungsi, jangan lanjut ke bagian tampilkan data
+      }
+
+      const data = await response.json();
+      displayWeather(data, city);
+
+    } catch (error) {
+      // Kode di dalam catch ini HANYA jalan kalau fetch() gagal total
+      // (tidak ada internet, domain tidak terjangkau, dsb) —
+      // bukan karena status 404/401 di atas.
+      // Requirement #5 — error handling: network error
+      console.error('Fetch gagal:', error);
+      showError('Tidak dapat terhubung ke server. Periksa koneksi internet kamu.');
+    }
+  }
+
+  /* ============================================================
+     TAMPILKAN DATA CUACA KE HALAMAN
+  ============================================================ */
+  function displayWeather(data, cityTyped) {
+    hideLoading();
+    hideError();
+
+    // Requirement #7 — pakai array method (map).
+    // data.weather adalah ARRAY berisi kondisi cuaca (biasanya 1 item,
+    // tapi API bisa mengembalikan lebih dari 1 kondisi sekaligus,
+    // misalnya "hujan ringan" + "berkabut" di waktu yang bersamaan).
+    // .map() dipakai untuk merapikan huruf besar/kecil tiap kondisi,
+    // lalu digabung jadi satu kalimat dengan .join().
+    const deskripsiGabungan = data.weather
+      .map((kondisi) => kapitalkanSetiapKata(kondisi.description))
+      .join(', ');
+
+    const iconCode = data.weather[0].icon;
+
+    weatherIconEl.src = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
+    weatherIconEl.alt = deskripsiGabungan;
+
+    cityNameEl.textContent    = `${data.name}, ${data.sys.country}`;
+    temperatureEl.textContent = `${Math.round(data.main.temp)}°C`;
+    descriptionEl.textContent = deskripsiGabungan;
+    humidityEl.textContent    = `${data.main.humidity}%`;
+    feelsLikeEl.textContent   = `${Math.round(data.main.feels_like)}°C`;
+
+    resultEl.classList.remove('hidden');
+  }
+
+  /* ============================================================
+     FUNGSI BANTU: ubah "few clouds" -> "Few Clouds"
+     Contoh kedua pemakaian array method (.map) — mengubah tiap
+     kata jadi berhuruf besar di awal, lalu disatukan lagi.
+  ============================================================ */
+  function kapitalkanSetiapKata(teks) {
+    return teks
+      .split(' ')
+      .map((kata) => kata.charAt(0).toUpperCase() + kata.slice(1))
+      .join(' ');
+  }
+
+  /* ============================================================
+     FUNGSI BANTU UNTUK MENGATUR TAMPILAN (show/hide state)
+     Dipisah jadi fungsi kecil supaya kode di atas lebih mudah
+     dibaca dan tidak berulang-ulang.
+  ============================================================ */
+  function showLoading() {
+    loadingEl.classList.remove('hidden');   // requirement #6 — loading state
+    errorBoxEl.classList.add('hidden');
+    resultEl.classList.add('hidden');
+    searchButton.disabled = true;           // cegah klik dobel saat masih memuat
+  }
+
+  function hideLoading() {
+    loadingEl.classList.add('hidden');
+    searchButton.disabled = false;
+  }
+
+  function showError(pesan) {
+    hideLoading();
+    resultEl.classList.add('hidden');
+    errorBoxEl.textContent = pesan;
+    errorBoxEl.classList.remove('hidden');
+  }
+
+  function hideError() {
+    errorBoxEl.classList.add('hidden');
+  }
+
+  /* ============================================================
+     TAMPILAN AWAL: langsung cari cuaca kota default saat halaman
+     dibuka, biar user langsung lihat aplikasinya "hidup".
+     Boleh dihapus/diganti kotanya sesuai keinginan.
+  ============================================================ */
+  getWeather('Jakarta');
+</script>
+</body>
+</html>
